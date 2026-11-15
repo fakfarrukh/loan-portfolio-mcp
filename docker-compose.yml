@@ -1,0 +1,33 @@
+# Local demo of the HTTP transport.
+#   cp .env.example .env   # then set AUTH_JWT_SECRET
+#   docker compose up --build
+#   npm run token -- analyst   # mint a dev token (uses the same .env)
+services:
+  loan-portfolio-mcp:
+    build: .
+    image: loan-portfolio-mcp:local
+    ports:
+      - '127.0.0.1:3000:3000'
+    environment:
+      MCP_TRANSPORT: http
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Shared-secret mode for the demo. In production use AUTH_JWKS_URL instead.
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?Set AUTH_JWT_SECRET in .env (min 32 chars)}
+      AUTH_ISSUER: ${AUTH_ISSUER:-https://local-dev}
+      AUTH_AUDIENCE: ${AUTH_AUDIENCE:-loan-portfolio-mcp}
+      AUTH_ROLE_CLAIM: ${AUTH_ROLE_CLAIM:-roles}
+      SEED_AS_OF: ${SEED_AS_OF:-}
+      OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-console}
+    volumes:
+      - portfolio-data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+volumes:
+  portfolio-data:
