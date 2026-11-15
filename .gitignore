@@ -1,0 +1,23 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+
+# Secrets: never commit real environment files (the example is safe and documented)
+.env
+.env.*
+!.env.example
+
+# SQLite databases (portfolio and audit), including WAL/SHM/journal side files, anywhere
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Logs and OS/editor noise
+*.log
+.DS_Store
+.idea/
+.vscode/
