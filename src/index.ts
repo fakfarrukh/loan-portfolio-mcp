@@ -2,6 +2,7 @@
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, loadDotEnv } from './config.js';
 import { createLogger } from './logger.js';
+import { startHttp } from './transport/http.js';
 import { startStdio } from './transport/stdio.js';
 
 async function main(): Promise<void> {
@@ -12,7 +13,7 @@ async function main(): Promise<void> {
   loadDotEnv();
   const config = loadConfig();
   const app = createApp(config);
-  const stop = await startStdio(app);
+  const stop = config.MCP_TRANSPORT === 'http' ? await startHttp(app) : await startStdio(app);
 
   let shuttingDown = false;
   const shutdown = async (signal: string): Promise<void> => {
