@@ -19,7 +19,9 @@ const logger = createLogger(process.env.LOG_LEVEL ?? 'info');
 const dbPath = resolve(process.env.DB_PATH ?? DEFAULT_DB_PATH);
 // --as-of=YYYY-MM-DD (used by `npm run seed:demo`) wins over SEED_AS_OF.
 const asOfFlag = process.argv.find((a) => a.startsWith('--as-of='))?.slice('--as-of='.length);
-const asOfDate = asOfFlag ?? process.env.SEED_AS_OF;
+// An empty value means "not set": docker-compose passes `SEED_AS_OF: ${SEED_AS_OF:-}` through as "".
+const rawAsOf = asOfFlag ?? process.env.SEED_AS_OF;
+const asOfDate = rawAsOf === undefined || rawAsOf.trim() === '' ? undefined : rawAsOf.trim();
 if (asOfDate !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(asOfDate)) {
   logger.fatal({ asOfDate }, 'The as-of date must be YYYY-MM-DD');
   process.exit(1);
