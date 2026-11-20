@@ -7,7 +7,43 @@ import {
   MAX_AUDIT_ARGS_BYTES,
   serializeAuditArgs,
   SqliteAuditRepository,
+  withBusyRetry,
 } from '../../src/db/sqlite/audit-repository.js';
+
+describe('withBusyRetry (shared audit file, concurrent startup)', () => {
+  const busy = () => Object.assign(new Error('database is locked'), { code: 'SQLITE_BUSY' });
+
+  it('retries while the file is busy, then succeeds', () => {
+    let calls = 0;
+    withBusyRetry(() => {
+      calls++;
+      if (calls < 3) throw busy();
+    });
+    expect(calls).toBe(3);
+  });
+
+  it('gives up after the last attempt and rethrows the busy error', () => {
+    let calls = 0;
+    expect(() => {
+      withBusyRetry(() => {
+        calls++;
+        throw busy();
+      }, 2);
+    }).toThrow(/database is locked/);
+    expect(calls).toBe(2);
+  });
+
+  it('does not retry other errors', () => {
+    let calls = 0;
+    expect(() => {
+      withBusyRetry(() => {
+        calls++;
+        throw new Error('disk I/O error');
+      });
+    }).toThrow(/disk I\/O/);
+    expect(calls).toBe(1);
+  });
+});
 
 describe('SqliteAuditRepository', () => {
   const audit = new SqliteAuditRepository(':memory:');

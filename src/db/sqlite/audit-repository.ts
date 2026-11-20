@@ -7,6 +7,28 @@ import { AUDIT_SCHEMA_SQL } from './schema.js';
 /** Upper bound on stored argument JSON, so a hostile client cannot bloat the audit store. */
 export const MAX_AUDIT_ARGS_BYTES = 4_096;
 
+/** How long a write waits for another process's lock before failing. */
+export const AUDIT_BUSY_TIMEOUT_MS = 5_000;
+const SETUP_ATTEMPTS = 10;
+
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Runs one-time setup, retrying with backoff while another process holds the file. */
+export function withBusyRetry(setup: () => void, attempts = SETUP_ATTEMPTS): void {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      setup();
+      return;
+    } catch (err) {
+      const busy = (err as { code?: string }).code?.startsWith('SQLITE_BUSY') === true;
+      if (!busy || attempt >= attempts) throw err;
+      sleepSync(Math.min(25 * 2 ** attempt, 1_000) + Math.random() * 25);
+    }
+  }
+}
+
 /** JSON.stringify's declared type omits that it returns undefined for functions and symbols. */
 function stringifyOrUndefined(value: unknown): string | undefined {
   return JSON.stringify(value);
@@ -36,10 +58,17 @@ export class SqliteAuditRepository implements AuditRepository {
 
   constructor(dbPath: string) {
     if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
-    this.db = new Database(dbPath);
-    this.db.pragma('journal_mode = WAL');
-    this.db.exec(AUDIT_SCHEMA_SQL);
-    this.migrate();
+    this.db = new Database(dbPath, { timeout: AUDIT_BUSY_TIMEOUT_MS });
+    withBusyRetry(() => {
+      // Several server processes may share one audit file (e.g. an analyst and an admin entry in
+      // Claude Desktop, started together). Creating the file and switching it to WAL can return
+      // SQLITE_BUSY at once, without waiting on the busy timeout, so setup is retried.
+      if (this.db.pragma('journal_mode', { simple: true }) !== 'wal') {
+        this.db.pragma('journal_mode = WAL');
+      }
+      this.db.exec(AUDIT_SCHEMA_SQL);
+      this.migrate();
+    });
     this.insert = this.db.prepare(
       `INSERT INTO audit_log (ts, correlation_id, subject, role, auth_method, kind, name,
                               arguments_json, outcome, error_code, row_count, duration_ms)
