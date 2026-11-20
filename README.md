@@ -1,5 +1,8 @@
 # Loan Portfolio MCP Server
 
+[![CI](https://github.com/fakfarrukh/loan-portfolio-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/fakfarrukh/loan-portfolio-mcp/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A production-style [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI
 assistant such as Claude Desktop answer questions about a loan portfolio. It does this by calling
 safe, read-only, audited tools against a database. It never writes SQL itself.
@@ -10,7 +13,7 @@ safe, read-only, audited tools against a database. It never writes SQL itself.
 
 **What this demonstrates:** typed tool contracts that an LLM can use correctly, role-based PII
 masking enforced in the data layer, JWT/OAuth2 authentication, parameterized SQL only, an
-append-only audit trail, OpenTelemetry tracing, and 149 automated tests.
+append-only audit trail, OpenTelemetry tracing, and 152 automated tests.
 
 ---
 
@@ -37,7 +40,7 @@ You need Node.js 22 or 24 and Claude Desktop. You don't need a compiler or Docke
 **1. Install, build and create the demo data.**
 
 ```bash
-git clone <repo-url> loan-portfolio-mcp
+git clone https://github.com/fakfarrukh/loan-portfolio-mcp.git
 cd loan-portfolio-mcp
 npm ci
 npm run build
@@ -53,8 +56,9 @@ Windows the backslashes are already doubled):
 node -p "JSON.stringify(require('path').resolve('dist/index.js'))"
 ```
 
-**3. Add the server to Claude Desktop.** In Claude Desktop, open Settings → Developer → Edit Config.
-Paste this, and replace the quoted path in `args` with the output of step 2:
+**3. Add the server to Claude Desktop.** In Claude Desktop, open Settings → Developer → Edit Config
+(in newer versions: Settings → Desktop app → Extensions → Edit config). Paste this, and replace the
+placeholder path in `args` with the output of step 2. The placeholder will not work as written.
 
 ```json
 {
@@ -71,8 +75,10 @@ Paste this, and replace the quoted path in `args` with the output of step 2:
 **4. Restart Claude Desktop and ask a question.**
 
 The config file lives at `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS
-and `%APPDATA%\Claude\claude_desktop_config.json` on Windows. Use `"STDIO_ROLE": "admin"` to see
-real customer names instead of masked ones.
+and `%APPDATA%\Claude\claude_desktop_config.json` on Windows. The Microsoft Store version of Claude
+Desktop keeps it elsewhere, so open it with Edit config rather than by path. After editing, quit
+Claude Desktop from the system tray (closing the window is not enough) and reopen it. Use
+`"STDIO_ROLE": "admin"` to see real customer names instead of masked ones.
 
 ### Five questions to try
 
@@ -210,8 +216,8 @@ cp .env.example .env && docker compose up --build
 ```
 
 The container runs as a non-root user with a read-only root filesystem and all Linux capabilities
-dropped. It seeds the database on first start and exposes a `/healthz` probe. (The Docker setup has
-not been run yet; see [Known limitations](#known-limitations).)
+dropped. It seeds the database on first start and exposes a `/healthz` probe. Mint a token with
+`npm run token -- analyst` (it reads the same `.env`) and call `http://127.0.0.1:3000/mcp`.
 
 `npm run seed` (without `:demo`) uses the end of last month as the as-of date. A `.env` file in the
 project root is loaded automatically; values set in the real environment, including the `env` block
@@ -279,7 +285,7 @@ service. The HTTP transport is stateless, so it scales horizontally without stic
 ## Testing
 
 ```bash
-npm test              # 149 tests, about 7 s
+npm test              # 152 tests, about 7 s
 npm run check         # typecheck + lint + format check + tests (same steps as CI)
 npm run test:coverage
 ```
@@ -290,12 +296,11 @@ npm run test:coverage
 | `tests/tools/executor.test.ts`         | Unauthenticated calls, unknown tools, oversized input, role restrictions, no stack traces in errors, output allow-list, timeouts, client cancellation, fail-closed audit (tools and resources), tracing spans                                                                           |
 | `tests/security/sql-injection.test.ts` | Injection payloads at three layers: rejected by validation; inert as bound parameters when validation is bypassed (data unchanged, integrity check passes); a static scan for string-built SQL                                                                                          |
 | `tests/auth/*`                         | JWT: valid, expired, wrong `aud`/`iss`/key, `alg:none`, algorithm confusion, oversized token, missing role, JWKS with RS256, Okta/Keycloak claim shapes. HTTP: 401/403/405/413, malformed JSON, analyst vs admin end to end, security headers                                           |
-| `tests/db/*`                           | Seed determinism and realism, status/days-past-due consistency, repository filters and sorting, trend values agreeing with the summary, the read-only connection, append-only audit, audit-store migration                                                                              |
+| `tests/db/*`                           | Seed determinism and realism, status/days-past-due consistency, repository filters and sorting, trend values agreeing with the summary, the read-only connection, append-only audit, audit-store migration and concurrent startup                                                       |
 
-CI (`.github/workflows/ci.yml`) is set up to run all of this on Node 22 and 24, then build and
-smoke-test the stdio server, audit production dependencies, and build the Docker image and check
-that it answers `/healthz` and returns 401 without a token. The workflow has not run yet; see
-[Known limitations](#known-limitations).
+CI (`.github/workflows/ci.yml`) runs all of this on Node 22 and 24 on every push and pull request,
+then builds and smoke-tests the stdio server, audits production dependencies, and builds the Docker
+image and checks that it answers `/healthz` and returns 401 without a token.
 
 ## Project layout
 
@@ -355,10 +360,6 @@ The demo is deliberately built so that the parts that change from client to clie
 
 ## Known limitations
 
-- **Docker and CI have not been run yet.** The Dockerfile, `docker-compose.yml` and the GitHub
-  Actions workflow are written but have never been executed. They were built on a machine without
-  Docker, and the repository has no remote yet. The CI workflow includes a job that builds the image
-  and checks `/healthz` and the 401 response, so the first CI run will verify both.
 - **Okta mapping: documented, not tested against a live tenant.** JWT verification is tested with
   shared secrets and with a local JWKS server issuing RS256 tokens. The same applies to the Entra ID
   and Keycloak notes.
@@ -375,5 +376,5 @@ The demo is deliberately built so that the parts that change from client to clie
   calls, resource reads and prompt reads.
 - **Synthetic data only**, with a deliberately small and simplified credit model: no charge-offs,
   prepayment curves or collateral.
-- **Not tested in the Claude Desktop app itself.** The server is tested end to end with the
-  official MCP SDK client over stdio, which uses the same protocol.
+- **Manually tested in Claude Desktop on Windows only.** Automated end-to-end tests use the official
+  MCP SDK client over stdio, which speaks the same protocol. macOS has not been tried by hand.
